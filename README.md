@@ -1,2 +1,17 @@
-# ev3rt-TREX
-Implemented security on top of ev3rt for timed execution
+# ev3rt-REX
+A version of the TOPPERS EV3RT-HRP2 kernel that implements timed return execution protection.
+
+
+
+
+
+Timed Return Execution is a proposed method of intrusion detection based on identifying cases where a program exceeds its worst case execution time over a very small area, such as the return from a function call. It takes advantage of the fact that over small, straight-line segments of code, static timing analysis can yield extremely tight bounds. It requires the implementation of timer checkpoint system calls to track the return time of a function, and to break if the timer times out before the return is complete. 
+
+Our implementation of Timed Return Execution into the TOPPERS EV3 Kernel is primarily meant as a proof-of-concept, illustrating both how the T-Rex checkpoint system calls can be written, as well as where in the kernel checkpoints should be added to provide OS-level protection for task entry and return. Later, we will also provide an explanation of what further modifications could be made to the kernel to improve our implementation of T-Rex.
+
+
+Our T-Rex timer implementation is based on the high-resolution timer available in the EV3 kernel. High resolution timer is not a standard tool in the kernel, however, and is not found in the kernel or include directories. These directories only include millimeter-resolution timers, which are not precise enough for use in T-Rex, which, ideally, wants a cycle-resolution timer. The implementation for the high-resolution timer is found in the drivers section of the target directory in the highres_alarm.c file. These timers offer an approximation of microsecond-level precision, and are the most accurate timers available in the TOPPERS EV3 Kernel. 
+
+In theory, each task will have its own associated timer for use with T-Rex checkpoints, however, in practice this is difficult to implement, in part because the number of highres alarms available in the TOPPERS EV3 Kernel is limited to 10, with at least 2 already used by the system's tasks. But, since the EV3 device is a single-core machine, we were able to take advantage of the fact that only one T-Rex timer should be counting down at any given time, and only implemented a single global timer. Each Task Control Block contains a status field indicating the state of the associated task's timer (inactive, active, paused, or timed out) and a time recording that indicates how much time its timer will have left when it resumes counting down. 
+
+We then defined a pair of system calls,global_trex_start() and global_trex_stop(), which start and stop the T-Rex timerrespectively, as well as updating the TCB’s trex_state_field appropriately.  These  calls  are  available  directly  to  other  functions inside the  kernel,  as  they  were  added  in  the alarm.cfile,  orto the user via the wrapper functions trex_start_timer()and del_alm(). The global_trex_start() function takes in a singleunsigned  integer,  and  starts  the  global  highres  T-Rex  timer  witha  period  of  that  many  milliseconds.  Theglobaltrexstop()function’s  behavior  is  determined  by  the  value  in  pschedtsk’s trex_state field; for an active (i.e. counting down) timer, it will stop the timer and set the state to inactive, while for all other states it will simply set the state to inactive and log a message. Figure 1 is a flowchart that explains the behavior of the timer in terms of the 4 possible states an a state machine that contains them
